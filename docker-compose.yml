@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: darkhorse_db
+    restart: always
+    environment:
+      POSTGRES_USER: darkhorse
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-darkhorse_dev}
+      POSTGRES_DB: darkhorse_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U darkhorse -d darkhorse_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: darkhorse_redis
+    restart: always
+    command: redis-server --requirepass ${REDIS_PASSWORD:-darkhorse_cache_dev}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: ./api.Dockerfile
+    container_name: darkhorse_api
+    restart: unless-stopped
+    ports:
+      - "5000:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Host=db;Database=darkhorse_db;Username=darkhorse;Password=${DB_PASSWORD:-darkhorse_dev}
+      - Redis__ConnectionString=redis:6379,password=${REDIS_PASSWORD:-darkhorse_cache_dev}
+      - MasterEncryptionKey=${MASTER_ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
+      - Jwt__Key=${JWT_SECRET:-super_secret_jwt_key_that_is_at_least_32_bytes_long}
+      - Jwt__Issuer=Darkhorse
+      - Jwt__Audience=DarkhorseUsers
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: ./worker.Dockerfile
+    container_name: darkhorse_worker
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock # Required to spawn strategy containers
+    environment:
+      - DOTNET_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Host=db;Database=darkhorse_db;Username=darkhorse;Password=${DB_PASSWORD:-darkhorse_dev}
+      - Redis__ConnectionString=redis:6379,password=${REDIS_PASSWORD:-darkhorse_cache_dev}
+      - MasterEncryptionKey=${MASTER_ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: darkhorse_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  redisdata:

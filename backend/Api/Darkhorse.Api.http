@@ -1,0 +1,6 @@
+@Darkhorse.Api_HostAddress = http://localhost:5078
+
+GET {{Darkhorse.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
