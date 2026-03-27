@@ -18,8 +18,8 @@ public static class DependencyInjection
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         // Database
-        var connectionString = configuration.GetConnectionString("DefaultConnection") 
-            ?? Environment.GetEnvironmentVariable("DefaultConnection");
+        var connectionString = configuration.GetConnectionString("DB_CONNECTION")
+            ?? Environment.GetEnvironmentVariable("DB_CONNECTION");
 
         services.AddDbContext<AppDbContext>(options =>
             options.UseNpgsql(connectionString));
@@ -43,7 +43,7 @@ public static class DependencyInjection
 
         // Security
         services.AddSingleton<IPasswordService, PasswordService>();
-        
+
         var masterKey = configuration["MASTER_ENCRYPTION_KEY"] ?? Environment.GetEnvironmentVariable("MASTER_ENCRYPTION_KEY");
         if (!string.IsNullOrEmpty(masterKey) && masterKey.Length == 64)
         {

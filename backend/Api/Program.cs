@@ -7,8 +7,24 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
 using System.Text;
+using System.Security.Cryptography.X509Certificates;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Configure HTTPS dynamically if PEM paths are provided
+var certPath = builder.Configuration["SSL_CERT_PATH"] ?? Environment.GetEnvironmentVariable("SSL_CERT_PATH");
+var keyPath = builder.Configuration["SSL_KEY_PATH"] ?? Environment.GetEnvironmentVariable("SSL_KEY_PATH");
+
+if (!string.IsNullOrEmpty(certPath) && !string.IsNullOrEmpty(keyPath))
+{
+    builder.WebHost.ConfigureKestrel(options =>
+    {
+        options.ConfigureHttpsDefaults(httpsOptions =>
+        {
+            httpsOptions.ServerCertificate = X509Certificate2.CreateFromPemFile(certPath, keyPath);
+        });
+    });
+}
 
 // 1. Serilog configuration
 builder.Host.UseSerilog((context, conf) => conf
@@ -48,7 +64,7 @@ if (!string.IsNullOrEmpty(jwtSecret))
                 IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
                 ClockSkew = TimeSpan.Zero
             };
-            
+
             // Allow token in query string for SignalR
             options.Events = new JwtBearerEvents
             {
@@ -69,12 +85,24 @@ if (!string.IsNullOrEmpty(jwtSecret))
 // 6. CORS
 builder.Services.AddCors(options =>
 {
-    var origin = builder.Configuration["FRONTEND_URL"] ?? "http://localhost:3000";
-    options.AddDefaultPolicy(policy => policy
-        .WithOrigins(origin)
-        .AllowAnyMethod()
-        .AllowAnyHeader()
-        .AllowCredentials());
+    var origins = builder.Configuration["ALLOWED_ORIGINS"] ?? "https://localhost:5173";
+    var originList = origins.Split(',', StringSplitOptions.RemoveEmptyEntries);
+
+    options.AddDefaultPolicy(policy =>
+    {
+        if (originList.Contains("*"))
+        {
+            policy.SetIsOriginAllowed(_ => true);
+        }
+        else
+        {
+            policy.WithOrigins(originList);
+        }
+
+        policy.AllowAnyMethod()
+              .AllowAnyHeader()
+              .AllowCredentials();
+    });
 });
 
 var app = builder.Build();
@@ -86,17 +114,19 @@ if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
+    app.MapGet("/", context =>
+    {
+        context.Response.Redirect("/swagger");
+        return Task.CompletedTask;
+    });
 }
 
 app.UseCors();
 
 app.UseIpRateLimiting();
 
-// Only enable HTTPS redirection in production to avoid local dev cert issues with Docker network
-if (!app.Environment.IsDevelopment())
-{
-    app.UseHttpsRedirection();
-}
+// Enable HTTPS redirection
+app.UseHttpsRedirection();
 
 app.UseAuthentication();
 app.UseMiddleware<CsrfMiddleware>(); // CSRF goes after Auth

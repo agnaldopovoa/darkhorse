@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+  baseURL: import.meta.env.DARKHORSE_API_URL || 'https://localhost:7000/api',
   withCredentials: true, // Required for cookies (CSRF)
 });
 
@@ -34,21 +34,21 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
-    
+
     // Allow retries for 401s if not already retrying
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
-      
+
       try {
         const refreshToken = localStorage.getItem('refreshToken');
         if (!refreshToken) throw new Error('No refresh token');
 
         // Attempt refresh
         const res = await axios.post(`${api.defaults.baseURL}/auth/refresh`, { refreshToken });
-        
+
         localStorage.setItem('accessToken', res.data.accessToken);
         localStorage.setItem('refreshToken', res.data.refreshToken);
-        
+
         // Re-execute original request
         return api(originalRequest);
       } catch (refreshError) {
@@ -59,7 +59,7 @@ api.interceptors.response.use(
         return Promise.reject(refreshError);
       }
     }
-    
+
     return Promise.reject(error);
   }
 );

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { UserContext } from '../api/models';
+import type { UserContext } from '../api/models';
 import { jwtDecode } from 'jwt-decode';
 
 interface AuthState {

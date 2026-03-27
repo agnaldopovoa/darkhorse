@@ -56,16 +56,23 @@ cd ~/projects/darkhorse
 Generate a `.env` map for the local API and frontend to hook into our Local Docker dependencies.
 ```bash
 # Create local .env for Backend (reads at runtime)
-cat <<EOF > backend/.env
-ConnectionStrings__DefaultConnection="Host=localhost;Port=5432;Database=darkhorse_local;Username=dev;Password=devpass"
-Redis__ConnectionString="localhost:6379,password=redispass"
+cat << 'EOF' > backend/.env
+DB_CONNECTION="Host=localhost;Port=5431;Database=darkhorse_dev;Username=darkhorse;Password=darkhorse"
+DB_PASSWORD=darkhorse
+REDIS_URL="localhost:6378,password=redispass"
+REDIS_PASSWORD=redispass
 JWT_SECRET="super_secret_local_jwt_key_that_is_at_least_32_bytes_long"
-MASTER_ENCRYPTION_KEY="0000000000000000000000000000000000000000000000000000000000000000"
+MASTER_ENCRYPTION_KEY="4461726B686F7273652063727970746F63757272656E63792074726164696E67"
+ALLOWED_ORIGINS="https://localhost:5173"
+SSL_CERT_PATH="/etc/ssl/localcerts/localhost+5.pem"
+SSL_KEY_PATH="/etc/ssl/localcerts/localhost+5-key.pem"
 EOF
 
 # Create local .env for Frontend
-cat <<EOF > frontend/.env.local
-VITE_API_URL="http://localhost:5000"
+cat << 'EOF' > frontend/.env.local
+DARKHORSE_API_URL="https://localhost:7000"
+SSL_CERT_PATH="/etc/ssl/localcerts/localhost+5.pem"
+SSL_KEY_PATH="/etc/ssl/localcerts/localhost+5-key.pem"
 EOF
 ```
 
@@ -73,19 +80,43 @@ EOF
 Using a small compose file exclusively for our backing services.
 ```bash
 cat <<EOF > docker-compose.local.yml
-version: '3.8'
 services:
-  db:
-    image: postgres:15-alpine
+  db_dev:
+    image: postgres:16-alpine
+    container_name: darkhorse_db_dev
+    restart: always
     environment:
-      POSTGRES_USER: dev
-      POSTGRES_PASSWORD: devpass
-      POSTGRES_DB: darkhorse_local
-    ports: ["5432:5432"]
-  redis:
+      POSTGRES_USER: darkhorse
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-darkhorse}
+      POSTGRES_DB: darkhorse_dev
+    ports:
+      - "5431:5432"
+    volumes:
+      - pgdata_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U darkhorse -d darkhorse_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis_dev:
     image: redis:7-alpine
-    command: redis-server --requirepass redispass
-    ports: ["6379:6379"]
+    container_name: darkhorse_redis_dev
+    restart: always
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redispass}
+    ports:
+      - "6378:6379"
+    volumes:
+      - redisdata_dev:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata_dev:
+  redisdata_dev:
 EOF
 
 docker compose -f docker-compose.local.yml up -d
@@ -96,27 +127,38 @@ docker compose -f docker-compose.local.yml up -d
 **1. Apply Database Migrations & Run Backend API + Worker (Terminal 1)**
 The worker `IHostedService` lifecycle runs automatically inside the ASP.NET Core process.
 ```bash
-cd backend
+# Restore dependencies
 dotnet restore
 # Apply migrations (ensure dotnet-ef is installed globally: dotnet tool install --global dotnet-ef)
-dotnet ef database update --project Darkhorse.Infrastructure --startup-project Darkhorse.Api
-
-# Start API and Worker
-cd Darkhorse.Api
-dotnet run --launch-profile "http" # Usually binds to http://localhost:5000
+cd backend
+dotnet ef database update --project Infrastructure/Darkhorse.Infrastructure.csproj --startup-project Api/Darkhorse.Api.csproj
 ```
 
-**2. Run Frontend (Terminal 2)**
+
+**2. Trust the HTTPS development certificate (run once)**
+```bash
+dotnet dev-certs https --trust
+```
+
+
+**3. Start API and Worker**
+```bash
+cd backend/Api
+dotnet run --launch-profile "https"
+# Usually binds to https://localhost:7000
+```
+
+
+**4. Run Frontend (Terminal 2)**
 ```bash
 cd frontend
 npm install
 npm run dev
-# Vite runs usually at http://localhost:5173
+# Vite runs usually at https://localhost:5173
 ```
 
 ### Debugging Local
-* **DB connection failures:** Ensure port 5432 is not occupied by a local native Postgres install. Connect via `psql -h localhost -U dev -d darkhorse_local -W`.
-* **SignalR WS 401/CORS:** In the .NET `Program.cs`, verify CORS `WithOrigins("http://localhost:5173")` and `AllowCredentials()` is set up.
+* **SignalR WS 401/CORS:** In the .NET `Program.cs`, verify CORS `WithOrigins("https://localhost:5173")` and `AllowCredentials()` is set up.
 * **Python runtime fails:** If Hangfire throws "python3: command not found", check `which python3` and ensure the application runner references the correct executable path.
 
 ---
@@ -183,7 +225,7 @@ services:
     ports:
       - "3000:80"
     environment:
-      VITE_API_URL: "http://<SERVER_IP>:8080"
+      DARKHORSE_API_URL: "http://<SERVER_IP>:8080"
 
 volumes:
   pgdata:
@@ -233,7 +275,7 @@ docker compose up -d --build --no-deps api
 4. **Build Command:** `npm run build`
 5. **Output Directory:** `dist`
 6. **Environment Variables:**
-   - `VITE_API_URL`: `https://api.yourdomain.com`
+   - `DARKHORSE_API_URL`: `https://api.yourdomain.com`
 7. Click **Deploy**. Vercel will auto-deploy pushes to `main`.
 
 ### 3.2 Backend + Worker (Fly.io)
@@ -424,7 +466,7 @@ Secrets Approach: **NEVER** commit `.env` files. Ensure `.env` is inside `.gitig
 | Issue | Cause | Solution |
 |---|---|---|
 | **API won't connect to Docker DB** | `.env` string contains `localhost`. | Inside Docker Compose, containers communicate via service names. Change `localhost` to `db`. |
-| **Vite Frontend gives CORS errors** | Backend doesn't recognize frontend port. | Update `Program.cs` CORS policy to explicitly allow `http://localhost:5173` and allow credentials. |
+| **Vite Frontend gives CORS errors** | Backend doesn't recognize frontend port. | Update `Program.cs` CORS policy to explicitly allow `https://localhost:5173` and allow credentials. |
 | **Fly.io Deployment Timeouts** | Remote Docker Build running out of RAM. | Add `--remote-only` to `fly deploy` command. |
 | **Supabase `too many connections`** | Direct connection limit hit by EF Core. | Change connection string port from `5432` to the connection pooler `6543`. |
 | **SignalR 401 Unauthorized** | Token missing in WS Handshake. | In React config, ensure `withUrl("...", { accessTokenFactory: () => <your-memory-statet-token> })` is bound. |

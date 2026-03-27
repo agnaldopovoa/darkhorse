@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import Editor from '@monaco-editor/react';
-import { Play, Square, Save, Activity } from 'lucide-react';
+import { Play, Save, Activity } from 'lucide-react';
 
 export default function Strategies() {
   const [script, setScript] = useState<string>('def init(context):\n    pass\n\ndef tick(context, data):\n    signal = "HOLD"\n    if data.close > data.open:\n        signal = "BUY"\n    return signal\n');

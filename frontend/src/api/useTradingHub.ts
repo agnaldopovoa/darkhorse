@@ -13,8 +13,8 @@ export const useTradingHub = () => {
         isConnecting.current = true;
         setStatus('connecting');
 
-        const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-        
+        const baseUrl = import.meta.env.DARKHORSE_API_URL || 'https://localhost:7000';
+
         const newConnection = new HubConnectionBuilder()
             .withUrl(`${baseUrl}/hubs/trading`, {
                 accessTokenFactory: () => token

@@ -1,0 +1,38 @@
+services:
+  db_dev:
+    image: postgres:16-alpine
+    container_name: darkhorse_db_dev
+    restart: always
+    environment:
+      POSTGRES_USER: darkhorse
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-darkhorse}
+      POSTGRES_DB: darkhorse_dev
+    ports:
+      - "5431:5432"
+    volumes:
+      - pgdata_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U darkhorse -d darkhorse_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis_dev:
+    image: redis:7-alpine
+    container_name: darkhorse_redis_dev
+    restart: always
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redispass}
+    ports:
+      - "6378:6379"
+    volumes:
+      - redisdata_dev:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata_dev:
+  redisdata_dev:
+

@@ -6,15 +6,15 @@ using Serilog;
 namespace Darkhorse.Worker.Jobs;
 
 public class TickStrategiesJob(
-    IStrategyRepository strategyRepo,
+    IStrategyRepository strategyRepo/*,
     IStrategyRunner runner,
     IBrokerService brokerService,
-    IMediator mediator) // Used if we dispatch commands internally
+    IMediator mediator*/) // Used if we dispatch commands internally
 {
     public async Task ExecuteAsync(CancellationToken ct)
     {
         Log.Information("TickStrategiesJob started");
-        
+
         var runningStrategies = await strategyRepo.GetAllRunningAsync(ct);
         if (!runningStrategies.Any())
         {
@@ -32,7 +32,7 @@ public class TickStrategiesJob(
                 // 4. Create StrategyContext
                 // 5. Build context snapshot for Execution log
                 // 6. Invoke sandboxed python runner
-                
+
                 Log.Information($"Ticked strategy {strategy.Id}");
                 /*
                 var output = await runner.RunAsync(strategy.Script, context, ct);
