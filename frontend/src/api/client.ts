@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.DARKHORSE_API_URL || 'https://localhost:7000/api',
+  baseURL: `${import.meta.env.VITE_DARKHORSE_API_URL || 'https://localhost:7000'}/api`,
   withCredentials: true, // Required for cookies (CSRF)
 });
 
@@ -35,16 +35,16 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // Allow retries for 401s if not already retrying
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // Allow retries for 401s if not already retrying and NOT the refresh endpoint itself
+    if (error.response?.status === 401 && !originalRequest._retry && !originalRequest.url?.includes('/auth/refresh')) {
       originalRequest._retry = true;
 
       try {
         const refreshToken = localStorage.getItem('refreshToken');
-        if (!refreshToken) throw new Error('No refresh token');
+        if (!refreshToken) throw new Error(error.response?.data?.detail || 'No refresh token');
 
-        // Attempt refresh
-        const res = await axios.post(`${api.defaults.baseURL}/auth/refresh`, { refreshToken });
+        // Attempt refresh (using the api instance ensures CSRF/Auth headers are applied)
+        const res = await api.post('/auth/refresh', { refreshToken });
 
         localStorage.setItem('accessToken', res.data.accessToken);
         localStorage.setItem('refreshToken', res.data.refreshToken);
@@ -55,7 +55,11 @@ api.interceptors.response.use(
         // Logout on failure
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
-        window.location.href = '/login';
+        // deixa o componente tratar o erro primeiro
+        setTimeout(() => {
+          window.location.href = '/login';
+        }, 5000);
+
         return Promise.reject(refreshError);
       }
     }

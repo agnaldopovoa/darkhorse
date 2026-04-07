@@ -5,15 +5,15 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "backend", "backend", "{7D7D856C-FF2F-48E3-8623-A93A91B05B9F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Darkhorse.Domain", "backend\Domain\Darkhorse.Domain.csproj", "{57B3575C-9B44-4627-A6AB-D90B08F25C27}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Darkhorse.Domain", "Domain\Darkhorse.Domain.csproj", "{57B3575C-9B44-4627-A6AB-D90B08F25C27}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Darkhorse.Application", "backend\Application\Darkhorse.Application.csproj", "{D4338B20-BF7E-4734-8263-72887079F25E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Darkhorse.Application", "Application\Darkhorse.Application.csproj", "{D4338B20-BF7E-4734-8263-72887079F25E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Darkhorse.Infrastructure", "backend\Infrastructure\Darkhorse.Infrastructure.csproj", "{2AE45255-81BE-4B05-9F34-03FC0929CDB9}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Darkhorse.Infrastructure", "Infrastructure\Darkhorse.Infrastructure.csproj", "{2AE45255-81BE-4B05-9F34-03FC0929CDB9}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Darkhorse.Api", "backend\Api\Darkhorse.Api.csproj", "{2351C03B-3DB6-4CEE-A637-958AE6553A34}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Darkhorse.Api", "Api\Darkhorse.Api.csproj", "{2351C03B-3DB6-4CEE-A637-958AE6553A34}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Darkhorse.Worker", "backend\Worker\Darkhorse.Worker.csproj", "{695F4FC0-EB59-4416-A81F-98C7C06D5A35}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Darkhorse.Worker", "Worker\Darkhorse.Worker.csproj", "{695F4FC0-EB59-4416-A81F-98C7C06D5A35}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

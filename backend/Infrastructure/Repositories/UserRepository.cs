@@ -13,6 +13,9 @@ public class UserRepository(AppDbContext db) : IUserRepository
     public Task<User?> GetByEmailAsync(string email, CancellationToken ct = default)
         => db.Users.FirstOrDefaultAsync(u => u.Email == email.ToLowerInvariant(), ct);
 
+    public Task<User?> GetByVerificationTokenHashAsync(string hash, CancellationToken ct = default)
+        => db.Users.FirstOrDefaultAsync(u => u.EmailVerificationTokenHash == hash, ct);
+
     public async Task AddAsync(User user, CancellationToken ct = default)
     {
         db.Users.Add(user);
@@ -26,3 +29,4 @@ public class UserRepository(AppDbContext db) : IUserRepository
         await db.SaveChangesAsync(ct);
     }
 }
+

@@ -62,17 +62,21 @@ DB_PASSWORD=darkhorse
 REDIS_URL="localhost:6378,password=redispass"
 REDIS_PASSWORD=redispass
 JWT_SECRET="super_secret_local_jwt_key_that_is_at_least_32_bytes_long"
+JWT_EXPIRATION_MINUTES="15"
+REFRESHTOKEN_EXPIRATION_HOURS="24"
+JTI_BLACKLIST_EXPIRATION_DAYS="7"
+REFRESHTOKEN_BLACKLIST_EXPIRATION_DAYS="30"
 MASTER_ENCRYPTION_KEY="4461726B686F7273652063727970746F63757272656E63792074726164696E67"
 ALLOWED_ORIGINS="https://localhost:5173"
-SSL_CERT_PATH="/etc/ssl/localcerts/localhost+5.pem"
-SSL_KEY_PATH="/etc/ssl/localcerts/localhost+5-key.pem"
+SSL_CERT_PATH="/etc/ssl/localcerts/nvr.pem"
+SSL_KEY_PATH="/etc/ssl/localcerts/nvr-key.pem"
 EOF
 
 # Create local .env for Frontend
 cat << 'EOF' > frontend/.env.local
 DARKHORSE_API_URL="https://localhost:7000"
-SSL_CERT_PATH="/etc/ssl/localcerts/localhost+5.pem"
-SSL_KEY_PATH="/etc/ssl/localcerts/localhost+5-key.pem"
+SSL_CERT_PATH="/etc/ssl/localcerts/nvr.pem"
+SSL_KEY_PATH="/etc/ssl/localcerts/nvr-key.pem"
 EOF
 ```
 
@@ -209,6 +213,10 @@ services:
       ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=darkhorse_qa;Username=qa_user;Password=${DB_PASS}"
       Redis__ConnectionString: "redis:6379,password=${REDIS_PASS}"
       JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION_MINUTES: ${JWT_EXPIRATION_MINUTES}
+      REFRESHTOKEN_EXPIRATION_HOURS: ${REFRESHTOKEN_EXPIRATION_HOURS}
+      JTI_BLACKLIST_EXPIRATION_DAYS: ${JTI_BLACKLIST_EXPIRATION_DAYS}
+      REFRESHTOKEN_BLACKLIST_EXPIRATION_DAYS: ${REFRESHTOKEN_BLACKLIST_EXPIRATION_DAYS}
       MASTER_ENCRYPTION_KEY: ${MASTER_ENCRYPTION_KEY}
       ASPNETCORE_ENVIRONMENT: "QA"
     ports:
@@ -237,6 +245,10 @@ Keep a `.env` in the root that Docker Compose will automatically read. Do not co
 DB_PASS=Sup3rS3cr3tQAPass
 REDIS_PASS=QARedisAuth123
 JWT_SECRET=bVy2N4o0l5nF1k4F6G2hX8c1D4f8B2k7
+JWT_EXPIRATION_MINUTES=15
+REFRESHTOKEN_EXPIRATION_HOURS="24"
+JTI_BLACKLIST_EXPIRATION_DAYS="7"
+REFRESHTOKEN_BLACKLIST_EXPIRATION_DAYS="30"
 MASTER_ENCRYPTION_KEY=9a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p
 ```
 
@@ -358,6 +370,10 @@ fly launch --no-deploy
 
 # Set production secrets
 fly secrets set JWT_SECRET="prod-jwt-secret-xyz"
+fly secrets set JWT_EXPIRATION_MINUTES="15"
+fly secrets set REFRESHTOKEN_EXPIRATION_HOURS="24"
+fly secrets set JTI_BLACKLIST_EXPIRATION_DAYS="7"
+fly secrets set REFRESHTOKEN_BLACKLIST_EXPIRATION_DAYS="30"
 fly secrets set MASTER_ENCRYPTION_KEY="prod-enc-key-32-chars-xyz"
 fly secrets set ConnectionStrings__DefaultConnection="Host=aws-0-xx.pooler.supabase.com;Port=5432;Database=postgres;Username=postgres.xxx;Password=your_supabase_pass;"
 

@@ -3,7 +3,7 @@ using Darkhorse.Infrastructure.Cache;
 
 namespace Darkhorse.Infrastructure.Services;
 
-public class BrokerService(RedisCacheService cache) : IBrokerService
+public class BrokerService(ICacheService cache) : IBrokerService
 {
     // These abstract methods should ideally retrieve actual credentials, decrypt them, 
     // and initialize BrokerAdapter, then execute the command.
@@ -11,7 +11,7 @@ public class BrokerService(RedisCacheService cache) : IBrokerService
 
     public async Task<bool> TestConnectionAsync(CancellationToken ct = default)
     {
-        await Task.Delay(100, ct); 
+        await Task.Delay(100, ct);
         return true;
     }
 

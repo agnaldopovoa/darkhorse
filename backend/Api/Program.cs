@@ -77,6 +77,19 @@ if (!string.IsNullOrEmpty(jwtSecret))
                         context.Token = accessToken;
                     }
                     return Task.CompletedTask;
+                },
+                OnTokenValidated = async context =>
+                {
+                    var cacheService = context.HttpContext.RequestServices.GetRequiredService<Darkhorse.Domain.Interfaces.Services.ICacheService>();
+                    var jti = context.Principal?.Claims.FirstOrDefault(c => c.Type == System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Jti)?.Value;
+                    if (!string.IsNullOrEmpty(jti))
+                    {
+                        var isRevoked = await cacheService.GetAsync<bool>($"Revoked:{jti}");
+                        if (isRevoked)
+                        {
+                            context.Fail("This token has been revoked.");
+                        }
+                    }
                 }
             };
         });

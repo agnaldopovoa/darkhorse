@@ -3,7 +3,9 @@ import { HubConnection, HubConnectionBuilder, LogLevel } from '@microsoft/signal
 
 export const useTradingHub = () => {
     const [connection, setConnection] = useState<HubConnection | null>(null);
-    const [status, setStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
+    const [status, setStatus] = useState<'disconnected' | 'connecting' | 'connected'>(() => {
+        return localStorage.getItem('accessToken') ? 'connecting' : 'disconnected';
+    });
     const isConnecting = useRef(false);
 
     useEffect(() => {
@@ -11,13 +13,19 @@ export const useTradingHub = () => {
         if (!token || isConnecting.current) return;
 
         isConnecting.current = true;
-        setStatus('connecting');
 
-        const baseUrl = import.meta.env.DARKHORSE_API_URL || 'https://localhost:7000';
+        const baseUrl = import.meta.env.VITE_DARKHORSE_API_URL || 'https://localhost:7000';
+
+        const getCookie = (name: string) => {
+            const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+            return match ? match[2] : null;
+        };
+        const csrfToken = getCookie('csrf_token');
 
         const newConnection = new HubConnectionBuilder()
             .withUrl(`${baseUrl}/hubs/trading`, {
-                accessTokenFactory: () => token
+                accessTokenFactory: () => token,
+                headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : undefined
             })
             .withAutomaticReconnect()
             .configureLogging(LogLevel.Information)

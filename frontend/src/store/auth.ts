@@ -9,6 +9,12 @@ interface AuthState {
   logout: () => void;
 }
 
+interface JwtPayload {
+  sub: string;
+  email: string;
+  exp: number;
+}
+
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isAuthenticated: !!localStorage.getItem('accessToken'),
@@ -16,7 +22,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     localStorage.setItem('accessToken', token);
     localStorage.setItem('refreshToken', refresh);
     try {
-      const decoded: any = jwtDecode(token);
+      const decoded = jwtDecode<JwtPayload>(token);
       set({
         isAuthenticated: true,
         user: { id: decoded.sub, email: decoded.email }
@@ -36,7 +42,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 const initialToken = localStorage.getItem('accessToken');
 if (initialToken) {
   try {
-    const decoded: any = jwtDecode(initialToken);
+    const decoded = jwtDecode<JwtPayload>(initialToken);
     useAuthStore.setState({ 
       user: { id: decoded.sub, email: decoded.email },
       isAuthenticated: true 

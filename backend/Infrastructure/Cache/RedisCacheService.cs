@@ -1,9 +1,10 @@
 using StackExchange.Redis;
 using System.Text.Json;
+using Darkhorse.Domain.Interfaces.Services;
 
 namespace Darkhorse.Infrastructure.Cache;
 
-public class RedisCacheService(IConnectionMultiplexer redis)
+public class RedisCacheService(IConnectionMultiplexer redis) : ICacheService
 {
     private readonly IDatabase _db = redis.GetDatabase();
 

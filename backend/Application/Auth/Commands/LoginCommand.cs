@@ -1,14 +1,10 @@
+using Darkhorse.Application.Auth.Helper;
 using Darkhorse.Domain.Exceptions;
 using Darkhorse.Domain.Interfaces.Repositories;
 using Darkhorse.Domain.Interfaces.Services;
 using FluentValidation;
 using MediatR;
 using Microsoft.Extensions.Configuration;
-using Microsoft.IdentityModel.Tokens;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Security.Cryptography;
-using System.Text;
 
 namespace Darkhorse.Application.Auth.Commands;
 
@@ -25,9 +21,10 @@ public class LoginCommandValidator : AbstractValidator<LoginCommand>
 }
 
 public class LoginCommandHandler(
-    IUserRepository userRepository, 
-    IPasswordService passwordService, 
-    IConfiguration config) 
+    IUserRepository userRepository,
+    IPasswordService passwordService,
+    IConfiguration config,
+    ICacheService cacheService)
     : IRequestHandler<LoginCommand, LoginResult>
 {
     public async Task<LoginResult> Handle(LoginCommand request, CancellationToken cancellationToken)
@@ -37,40 +34,19 @@ public class LoginCommandHandler(
             throw new InvalidCredentialsException();
 
         if (!user.IsActive)
-            throw new Exception("Account not verified.");
+            throw new Exception("Email not verified. Please check your inbox and click the activation link.");
 
-        var accessToken = GenerateJwtToken(user);
-        var refreshToken = GenerateRefreshToken();
+        var accessToken = JwtHelper.GenerateJwtToken(user, config);
+        var refreshToken = JwtHelper.GenerateRefreshToken();
+
+        // Store new refresh token
+        JwtHelper.SaveRefreshToken(
+            cacheService,
+            refreshToken,
+            user.Id.ToString(),
+            int.Parse(config["REFRESHTOKEN_EXPIRATION_HOURS"] ?? "12"),
+            cancellationToken);
 
         return new LoginResult(accessToken, refreshToken);
-    }
-
-    private string GenerateJwtToken(Darkhorse.Domain.Entities.User user)
-    {
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(config["JWT_SECRET"]!));
-        var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-
-        var claims = new[]
-        {
-            new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
-            new Claim(JwtRegisteredClaimNames.Email, user.Email),
-            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-        };
-
-        var token = new JwtSecurityToken(
-            claims: claims,
-            expires: DateTime.UtcNow.AddMinutes(15), // 15-minute access token max
-            signingCredentials: creds
-        );
-
-        return new JwtSecurityTokenHandler().WriteToken(token);
-    }
-
-    private static string GenerateRefreshToken()
-    {
-        var randomBytes = new byte[64];
-        using var rng = RandomNumberGenerator.Create();
-        rng.GetBytes(randomBytes);
-        return Convert.ToBase64String(randomBytes);
     }
 }

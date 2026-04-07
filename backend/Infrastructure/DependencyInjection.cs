@@ -32,13 +32,18 @@ public static class DependencyInjection
         services.AddScoped<IExecutionRepository, ExecutionRepository>();
         services.AddScoped<IDataHistoryRepository, DataHistoryRepository>();
 
-        // Redis
+        // Cache
         var redisUrl = configuration["REDIS_URL"] ?? Environment.GetEnvironmentVariable("REDIS_URL");
         if (!string.IsNullOrEmpty(redisUrl))
         {
             var multiplexer = ConnectionMultiplexer.Connect(redisUrl);
             services.AddSingleton<IConnectionMultiplexer>(multiplexer);
-            services.AddSingleton<RedisCacheService>();
+            services.AddSingleton<ICacheService, RedisCacheService>();
+        }
+        else
+        {
+            services.AddMemoryCache();
+            services.AddSingleton<ICacheService, MemoryCacheService>();
         }
 
         // Security
@@ -54,6 +59,7 @@ public static class DependencyInjection
         services.AddScoped<IBrokerService, BrokerService>();
         services.AddScoped<IStrategyRunner, StrategyExecutor>();
         services.AddSingleton<CircuitBreakerFactory>();
+        services.AddScoped<IEmailService, EmailService>();
 
         return services;
     }

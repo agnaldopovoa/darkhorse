@@ -1131,6 +1131,10 @@ services:
       - REDIS_URL
       - MASTER_ENCRYPTION_KEY
       - JWT_SECRET
+      - JWT_EXPIRATION_MINUTES
+      - REFRESHTOKEN_EXPIRATION_HOURS
+      - JTI_BLACKLIST_EXPIRATION_DAYS
+      - REFRESH_TOKEN_BLACKLIST_EXPIRATION_DAYS
       - ALLOWED_ORIGINS
     # NOTE: API does NOT mount docker.sock — only the worker spawns containers
 
@@ -1194,12 +1198,16 @@ builder.Services.AddHealthChecks()
 All secrets are managed as environment variables. They are never committed to source control.
 
 ```
-DefaultConnection         PostgreSQL connection string
-REDIS_URL                 Redis connection string (includes password)
-REDIS_PASSWORD            Redis requirepass value
-MASTER_ENCRYPTION_KEY     32-byte hex key for AES-256-GCM (generate with: openssl rand -hex 32)
-JWT_SECRET                HS256 signing secret for JWTs
-ALLOWED_ORIGINS           Comma-separated list of allowed frontend origins
+DefaultConnection                       PostgreSQL connection string
+REDIS_URL                               Redis connection string (includes password)
+REDIS_PASSWORD                          Redis requirepass value
+MASTER_ENCRYPTION_KEY                   32-byte hex key for AES-256-GCM (generate with: openssl rand -hex 32)
+JWT_SECRET                              HS256 signing secret for JWTs
+JWT_EXPIRATION_MINUTES                  JWT expiration time in minutes
+REFRESHTOKEN_EXPIRATION_HOURS           Refresh token expiration time in hours
+JTI_BLACKLIST_EXPIRATION_DAYS           JTI blacklist expiration time in days
+REFRESHTOKEN_BLACKLIST_EXPIRATION_DAYS  Refresh token blacklist expiration time in days
+ALLOWED_ORIGINS                         Comma-separated list of allowed frontend origins
 ```
 
 ---

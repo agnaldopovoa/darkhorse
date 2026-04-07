@@ -13,5 +13,15 @@ export const authApi = {
 
   logout: async (): Promise<void> => {
     await api.post('/auth/logout');
+  },
+
+  verifyEmail: async (token: string): Promise<{ success: boolean; message: string; expired: boolean }> => {
+    const res = await api.get('/auth/verify-email', { params: { token } });
+    return res.data;
+  },
+
+  resendVerification: async (email: string): Promise<void> => {
+    await api.post('/auth/resend-verification', { email });
   }
 };
+

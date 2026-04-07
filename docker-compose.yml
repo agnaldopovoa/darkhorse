@@ -48,6 +48,10 @@ services:
       - Redis__ConnectionString=redis:6379,password=${REDIS_PASSWORD:-darkhorse_cache_dev}
       - MasterEncryptionKey=${MASTER_ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
       - Jwt__Key=${JWT_SECRET:-super_secret_jwt_key_that_is_at_least_32_bytes_long}
+      - Jwt__ExpirationMinutes=${JWT_EXPIRATION_MINUTES:-15}  
+      - RefreshToken__ExpirationHours=${REFRESHTOKEN_EXPIRATION_HOURS:-12}
+      - Jti__Blacklist__ExpirationDays=${JTI_BLACKLIST_EXPIRATION_DAYS:-7}
+      - RefreshToken__Blacklist__ExpirationDays=${REFRESHTOKEN_BLACKLIST_EXPIRATION_DAYS:-30}
       - Jwt__Issuer=Darkhorse
       - Jwt__Audience=DarkhorseUsers
     depends_on:

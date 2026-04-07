@@ -1,16 +1,27 @@
 using MediatR;
-using Darkhorse.Domain.Interfaces.Repositories;
+using Darkhorse.Domain.Interfaces.Services;
+using Microsoft.Extensions.Configuration;
 
 namespace Darkhorse.Application.Auth.Commands;
 
-// Assuming Revocations are done via Redis logic (Revoked:{Jti}) inside the Web API or RedisCacheService natively.
-public record LogoutCommand(string Jti) : IRequest;
+public record LogoutCommand(string? Jti, string? RefreshToken = null) : IRequest;
 
-public class LogoutCommandHandler : IRequestHandler<LogoutCommand>
+public class LogoutCommandHandler(
+    ICacheService cacheService,
+    IConfiguration config) : IRequestHandler<LogoutCommand>
 {
-    // A full implementation would inject RedisCacheService and add `jti` to the revoked list for 7 days.
-    public Task Handle(LogoutCommand request, CancellationToken cancellationToken)
+    public async Task Handle(LogoutCommand request, CancellationToken cancellationToken)
     {
-        return Task.CompletedTask;
+        if (!string.IsNullOrEmpty(request.Jti))
+        {
+            var cacheKeyJti = $"Revoked:{request.Jti}";
+            await cacheService.SetAsync(cacheKeyJti, true, TimeSpan.FromDays(int.Parse(config["JTI_BLACKLIST_EXPIRATION_DAYS"] ?? "7")), cancellationToken);
+        }
+
+        if (!string.IsNullOrEmpty(request.RefreshToken))
+        {
+            var cacheKeyRefresh = $"Revoked:{request.RefreshToken}";
+            await cacheService.SetAsync(cacheKeyRefresh, true, TimeSpan.FromDays(int.Parse(config["REFRESHTOKEN_BLACKLIST_EXPIRATION_DAYS"] ?? "30")), cancellationToken);
+        }
     }
 }

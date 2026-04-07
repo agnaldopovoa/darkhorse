@@ -11,6 +11,10 @@ public class User
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 
+    // Email verification — only the SHA-256 hash of the token is persisted (never plaintext)
+    public string? EmailVerificationTokenHash { get; set; }
+    public DateTimeOffset? EmailVerificationTokenExpiry { get; set; }
+
     // Navigation
     public ICollection<BrokerCredential> BrokerCredentials { get; set; } = [];
     public ICollection<Strategy> Strategies { get; set; } = [];
