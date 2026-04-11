@@ -32,9 +32,9 @@
 
 ## 1. System Overview
 
-A robust, secure, and highly available web application that allows users to write custom trading strategies in a sandboxed Python DSL, backtest them against stored historical OHLCV data, run them in a simulated paper trading environment, and deploy live automated trading bots across multiple cryptocurrency brokers (Binance, KuCoin, Coinbase).
+A robust, secure, and highly available web application that allows users to write custom trading strategies in a sandboxed Python DSL, backtest them against stored historical OHLCV data, run them in a simulated paper trading environment, and deploy live automated trading bots across multiple cryptocurrency brokers (Binance, Bitfinex, Bybit, Coinbase Advanced, Kraken, KuCoin, OKX).
 
-The backend is built on **.NET 8 LTS** (ASP.NET Core) for type safety, performance, and developer familiarity. Strategy scripts remain in **Python** for simplicity and are executed inside isolated Docker containers. The system is designed to run on free-tier cloud infrastructure using Docker Compose.
+The backend is built on **.NET 9** (ASP.NET Core) for type safety, performance, and developer familiarity. Strategy scripts remain in **Python** for simplicity and are executed inside isolated Docker containers. The system is designed to run on free-tier cloud infrastructure using Docker Compose.
 
 ---
 
@@ -43,12 +43,12 @@ The backend is built on **.NET 8 LTS** (ASP.NET Core) for type safety, performan
 | Layer | Technology | Rationale |
 |---|---|---|
 | Frontend | React (SPA) | Reactive UI, rich component ecosystem |
-| Backend API | .NET 8 LTS / ASP.NET Core | High performance, compile-time safety, mature ecosystem |
+| Backend API | .NET 9 / ASP.NET Core | High performance, compile-time safety, mature ecosystem |
 | ORM | Entity Framework Core | Code-first migrations, LINQ queries, PostgreSQL provider |
 | Database | PostgreSQL | Relational integrity for users, orders, strategies |
 | Cache | Redis | Ticker TTL cache, circuit breaker state, JWT revocation |
 | Task Queue | Hangfire + PostgreSQL | Built-in dashboard, cron scheduling, no extra infrastructure |
-| Broker Integration | ExchangeSharp (MIT) | .NET-native library supporting Binance, KuCoin, Coinbase |
+| Broker Integration | ExchangeSharp (MIT) | .NET-native library supporting Binance, Bitfinex, Bybit, Coinbase Advanced, Kraken, KuCoin, OKX |
 | Strategy Scripting | Sandboxed Python DSL | Docker-isolated execution with `runner.py` (see §7) |
 | Code Editor (UI) | Monaco Editor | VSCode-quality editor, Python syntax highlighting |
 | Structured Logging | Serilog + stdout | JSON structured logs, platform-native log capture |
@@ -332,7 +332,7 @@ Rate limit violations return HTTP `429 Too Many Requests` with a `Retry-After` h
 
 ### 7.1 ExchangeSharp Adapter
 
-All broker communication is abstracted behind a common interface implemented via **ExchangeSharp** (MIT license). Supported exchanges: **Binance, KuCoin, Coinbase**.
+All broker communication is abstracted behind a common interface implemented via **ExchangeSharp** (MIT license). Supported exchanges: **Binance, Bitfinex, Bybit, Coinbase Advanced, Kraken, KuCoin, OKX**.
 
 ```csharp
 using ExchangeSharp;
@@ -429,7 +429,99 @@ security_opt:
 user: "1000:1000"
 ```
 
-### 8.3 Execution Protocol
+### 8.3 Execution Lifecycle (per wireflow.md)
+
+The execution lifecycle described here is the **authoritative flow** from
+`wireflow.md`. The container protocol in §8.4 describes the lower-level
+mechanics of how the Python runner is invoked.
+
+#### State Machine
+
+```
+                     ┌──────────────────────────────────────────────┐
+                     │      User clicks Run → Run Modal opens      │
+                     │  (Past execution checkbox + time range)      │
+                     └───────────────────┬──────────────────────────┘
+                                         │ Confirm
+                                         ▼
+                                    ┌──────────┐
+        creation ──────────────────▶│  WAITING  │
+                  (Not executed)    └─────┬─────┘
+                                         │ Background job picks up
+                                         ▼
+                                    ┌──────────┐
+                                    │ RUNNING   │◄─── WebSocket notifies frontend
+                                    └──┬───┬────┘
+                       ┌───────────────┘   │          └──────────────┐
+                       ▼                   ▼                         ▼
+                 ┌───────────┐     ┌────────────┐            ┌────────────┐
+                 │ COMPLETED │     │ CANCELLED  │            │   ERROR    │
+                 └───────────┘     └────────────┘            └────────────┘
+                 (backtest ends)   (user clicks Stop)        (no retry)
+```
+
+#### Detailed Flow
+
+1. **User clicks Run** → the **Run modal** opens:
+   - "Past execution" checkbox.
+   - "Time unit" combo (day, week, month, year) — enabled only when checkbox is checked.
+   - "Numeric amount" free numeric field — enabled only when checkbox is checked.
+
+2. **User confirms** → strategy status becomes **Waiting**. The Run button is
+   replaced by the **Stop button**.
+
+3. **Background job** continuously scans for strategies with status = Waiting.
+   When one is found, it starts execution and notifies the frontend via
+   **WebSocket (SignalR)**. The frontend receives this event and updates the
+   status to **Running** in place.
+
+4. **Execution mode** depends on the Run modal configuration:
+   - If no time range is specified ("Past execution" unchecked), the strategy
+     runs **continuously** until the user stops it.
+   - If a time range is specified, it runs as a **backtest** and completes
+     automatically.
+
+5. **On backtest completion**, the WebSocket delivers a completion event.
+   The frontend updates the status to **Completed** and refreshes P&L,
+   largest gain, and largest loss in place.
+
+6. **On error**, the status changes to **Error** immediately with **no retry**.
+   The Error label is shown in red. Hovering or clicking it shows a tooltip
+   with the error message.
+
+7. **Re-execution**: When a strategy is re-executed after a terminal status
+   (Completed, Cancelled, or Error), the previous execution data is
+   **overwritten** by the new execution.
+
+#### Stop Button
+
+- Visible only while execution is **Running**.
+- Clicking it shows a confirmation modal.
+- On confirm, execution status changes to **Cancelled**.
+
+#### Row Protections
+
+| Action | Condition | Behavior |
+|---|---|---|
+| Run button | IsActive is No | Disabled |
+| Run button | Strategy has no script | Disabled with warning |
+| Activate/Deactivate button | Status is Waiting or Running | Disabled |
+| Edit icon | Status is Waiting or Running | Blocked with warning |
+| Delete icon | Status is Waiting or Running | Blocked with warning |
+
+#### IsActive vs Status
+
+These are two separate, independent fields:
+
+- **IsActive** (user-controlled): Yes / No toggle. A strategy is created as
+  **Yes** by default. The Activate/Deactivate button is **disabled** while
+  status is Waiting or Running.
+- **Status** (system-controlled): Not executed → Waiting → Running →
+  Completed / Cancelled / Error. Never set directly by the user.
+
+---
+
+### 8.4 Execution Protocol (Container)
 
 Strategy containers are spawned **exclusively by the Hangfire worker** — never by the API service. The API service does not mount the Docker socket. Communication is via **JSON over stdin/stdout**:
 
@@ -439,7 +531,7 @@ Strategy containers are spawned **exclusively by the Hangfire worker** — never
 4. The container exits. The worker reads stdout (capped at **1 MB**) and validates against a strict model.
 5. A **30-second hard timeout** kills the container.
 
-### 8.4 Runner Harness (`runner.py`)
+### 8.5 Runner Harness (`runner.py`)
 
 The strategy container image contains a fixed, immutable `runner.py` (Python). The user's script arrives as a field inside the JSON payload on stdin.
 
@@ -481,7 +573,7 @@ if __name__ == "__main__":
     main()
 ```
 
-### 8.5 Backtest Harness (`backtest_runner.py`)
+### 8.6 Backtest Harness (`backtest_runner.py`)
 
 For backtesting, efficiency is paramount. Instead of the .NET backend iterating through historical candles and spawning a container for each tick (or calculating simulated fills itself), the entire backtest logic is evaluated inside a dedicated `backtest_runner.py`.
 
@@ -559,7 +651,7 @@ if __name__ == "__main__":
     main()
 ```
 
-### 8.5 Output Validation
+### 8.7 Output Validation
 
 The .NET worker validates every container output:
 
@@ -582,7 +674,7 @@ public record StrategyOutput
 }
 ```
 
-### 8.6 Container Spawning (Hangfire Worker Only)
+### 8.8 Container Spawning (Hangfire Worker Only)
 
 ```csharp
 public class StrategyExecutor
@@ -623,7 +715,7 @@ public class StrategyExecutor
 }
 ```
 
-### 8.7 Example Strategy Script
+### 8.9 Example Strategy Script
 
 ```python
 # Available variables: ohlcv, balance, params, statistics, signal, quantity, reason
@@ -893,20 +985,25 @@ CREATE TABLE users (
 CREATE TABLE broker_credentials (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id          UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    broker_name      VARCHAR(64) NOT NULL,        -- e.g. "binance", "kraken"
+    broker_name      VARCHAR(64) NOT NULL,        -- Fixed list: Binance, Bitfinex, Bybit, Coinbase Advanced, Kraken, KuCoin, OKX
     apikey_nonce     BYTEA NOT NULL,              -- AES-GCM nonce for API key
     apikey_cipher    BYTEA NOT NULL,              -- AES-256-GCM encrypted API key
     secret_nonce     BYTEA NOT NULL,              -- AES-GCM nonce for secret
     secret_cipher    BYTEA NOT NULL,              -- AES-256-GCM encrypted secret
     key_version      INTEGER NOT NULL DEFAULT 1,  -- for key rotation
-    fee_rate         NUMERIC(8, 6) DEFAULT 0,     -- user-configured fee % per trade
-    funding_rate     NUMERIC(8, 6) DEFAULT 0,     -- user-configured funding rate
-    is_sandbox       BOOLEAN DEFAULT FALSE,       -- True = testnet/paper endpoint
-    status           VARCHAR(32) DEFAULT 'active', -- active | revoked | error
+    maker_fee        NUMERIC(8, 6) DEFAULT 0,     -- user-configured maker fee % per trade
+    market           VARCHAR(16) NOT NULL DEFAULT 'spot', -- spot | futures
+    network          VARCHAR(16) NOT NULL DEFAULT 'mainnet', -- mainnet | testnet
+    status           VARCHAR(32) DEFAULT 'active', -- active | inactive
     last_tested_at   TIMESTAMPTZ,
     created_at       TIMESTAMPTZ DEFAULT now()
 );
 ```
+
+> **Note on connection test flow (per wireflow.md):** On broker save, the system
+> tests the connection automatically. A successful test saves the broker as
+> **active**. If the test fails, a modal informs the user and asks for confirmation
+> to proceed; confirming saves the broker as **inactive**.
 
 #### `strategies`
 ```sql
@@ -915,23 +1012,48 @@ CREATE TABLE strategies (
     user_id             UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     credential_id       UUID REFERENCES broker_credentials(id),
     name                VARCHAR(128) NOT NULL,
-    symbol              VARCHAR(32) NOT NULL,       -- e.g. "BTC/USDT"
-    timeframe           VARCHAR(8) NOT NULL,        -- e.g. "1h", "15m"
-    script              TEXT NOT NULL,              -- current Python DSL code
+    symbol              VARCHAR(32) NOT NULL,       -- e.g. "BTC/USDT" (populated from selected broker's assets)
+    script              TEXT,                       -- Python DSL code (Monaco Editor, pre-filled comment on line 1)
     script_version      INTEGER DEFAULT 1,          -- incremented on edit
-    parameters          JSONB DEFAULT '{}',         -- user-defined params
-    mode                VARCHAR(16) DEFAULT 'paper', -- live | paper | backtest
-    status              VARCHAR(16) DEFAULT 'paused', -- running | paused | error
-    max_position_size   NUMERIC(24, 8),             -- hard cap per order
-    max_daily_volume    NUMERIC(24, 8),             -- daily aggregate cap
-    circuit_state       VARCHAR(16) DEFAULT 'CLOSED', -- CLOSED | OPEN | HALF-OPEN
-    circuit_failures    INTEGER DEFAULT 0,
-    circuit_opened_at   TIMESTAMPTZ,
-    schedule_interval   INTEGER DEFAULT 60,        -- seconds between ticks
+    is_active           BOOLEAN DEFAULT TRUE,       -- User-controlled toggle: Yes (enabled) / No (disabled)
+    status              VARCHAR(16) DEFAULT 'not_executed',
+        -- System-controlled execution status:
+        --   not_executed  → Set on creation; never run
+        --   waiting       → Queued; awaiting the background job
+        --   running       → Currently executing
+        --   completed     → Backtest finished naturally
+        --   cancelled     → Interrupted by the user
+        --   error         → An error occurred (label shown in red; tooltip with error message)
+    pnl                 NUMERIC(24, 8),             -- Most recent execution P&L in USDT
+    pnl_percentage      NUMERIC(10, 4),             -- Most recent execution P&L %
+    largest_gain        NUMERIC(24, 8),             -- Largest gain in USDT (most recent execution)
+    largest_gain_pct    NUMERIC(10, 4),             -- Largest gain %
+    largest_loss        NUMERIC(24, 8),             -- Largest loss in USDT (most recent execution)
+    largest_loss_pct    NUMERIC(10, 4),             -- Largest loss %
+    last_execution_at   TIMESTAMPTZ,                -- Timestamp of last execution
+    error_message       TEXT,                       -- Error message when status = 'error'
+    mode                VARCHAR(16) DEFAULT 'paper', -- Planned future feature: live | paper | backtest
+    max_position_size   NUMERIC(24, 8),             -- Planned future feature: hard cap per order
+    max_daily_volume    NUMERIC(24, 8),             -- Planned future feature: daily aggregate cap
+    circuit_state       VARCHAR(16) DEFAULT 'CLOSED', -- TODO: Polly circuit breaker (CLOSED | OPEN | HALF-OPEN)
+    circuit_failures    INTEGER DEFAULT 0,            -- TODO: Circuit breaker failure counter
+    circuit_opened_at   TIMESTAMPTZ,                  -- TODO: Circuit breaker open timestamp
+    schedule_interval   INTEGER DEFAULT 60,           -- Planned future feature: seconds between ticks
     created_at          TIMESTAMPTZ DEFAULT now(),
     updated_at          TIMESTAMPTZ DEFAULT now()
 );
 ```
+
+> **Strategy list columns (per wireflow.md):** Name · Broker (with market label) ·
+> Asset · IsActive · Status · Last execution · P&L · Largest gain · Largest loss ·
+> Creation · Activate/Deactivate button · Run/Stop button · Edit icon · Delete icon.
+>
+> P&L, largest gain, and largest loss display values in **USDT alongside the
+> percentage**, reflecting only the most recent execution. These columns are
+> **empty** while status is "not_executed".
+>
+> When a strategy is re-executed after a terminal status (Completed, Cancelled, or
+> Error), the previous execution data is **overwritten** by the new execution.
 
 #### `orders`
 ```sql
@@ -1045,31 +1167,76 @@ CREATE TABLE notifications (
 
 ## 16. User Interface Screens
 
-### A. Broker Configuration
+> **Navigation (per wireflow.md):** A fixed left sidebar contains links to
+> **Dashboard**, **Brokers**, and **Strategies**, with the logout option anchored
+> at the bottom.
+
+### A. Dashboard
+
+**Purpose:** High-level overview of the user's portfolio and broker connectivity.
+
+**Cards (per wireflow.md):**
+
+- **Portfolio** — current total asset value across all brokers in USDT.
+- **P&L** — single numeric value in USDT filtered by the selected time range.
+  Positive values shown in green with a `+` prefix; negative in red with a `−` prefix.
+- **Broker status indicator** — red (all failed), yellow (at least one failed),
+  green (all succeeded). Clicking yellow opens a modal listing the brokers with
+  communication failures.
+
+**Time range controls** — 1d, 7d, 1m, 6m, 1y, and custom. The custom option
+opens a modal with a "Time unit" combo (day, week, month, year) and a free
+numeric "Amount" field. These filters apply only to P&L.
+
+**Polling:** Every **60 seconds**, the dashboard polls the backend independently
+to refresh Portfolio and P&L values. **No WebSocket is used for dashboard updates.**
+
+### B. Brokers
 
 **Purpose:** Connect the application to real external exchanges.
 
-**Features:**
-- Form to add new broker (Dropdown: Binance / KuCoin / Coinbase). Includes fields for API Key, Secret (encrypted before storage), Fee %, and Sandbox toggle.
-- "Test Connection" button calling the `/test` endpoint, which performs a dry-run balance or markets fetch to validate credentials instantly.
-- List view of configured brokers with active/error status indicators.
+**List columns:** Name · Maker Fee · Market (spot/futures) · Network
+(mainnet/testnet) · Status (active/inactive) · Edit icon · Delete icon.
 
-### B. Strategy Editor
+**Create / Edit form fields:** Broker name (fixed list: Binance, Bitfinex, Bybit,
+Coinbase Advanced, Kraken, KuCoin, OKX) · API Key · API Secret · Maker Fee ·
+Market · Network.
 
-**Purpose:** The core IDE for writing, configuring, and testing the trading logic.
+On save, the system **tests the connection**. If the test fails, a modal informs
+the user and asks for confirmation to proceed. Confirming saves the broker as
+**inactive**. A successful test saves it as **active**.
 
-**Features:**
-- **Code Editor:** Monaco Editor integration providing syntax highlighting for the Python DSL.
-- **Configuration Panel:** Select Broker (from configured list), Trading Pair (e.g., BTC/USDT), Timeframe (1m, 5m, 1h, 1d), Tick interval (cron definition), and user-defined script parameters.
-- **Circuit Breaker Status:** Visual indicator if the strategy is currently paused due to errors.
-- **"Run Backtest" button:** Validates the script and triggers a historical test run without saving the strategy as active.
-- **Historical Chart:** Candlestick chart displaying the backtest period with plot markers for the BUY/SELL signals generated by the script.
+A **confirmation modal** is shown before deleting a broker.
 
-### C. Paper Trading
+### C. Strategies
+
+**Purpose:** Manage, configure, and execute trading strategies.
+
+**Features (per wireflow.md):**
+
+- **List columns:** Name · Broker (with market label) · Asset · IsActive · Status ·
+  Last execution · P&L · Largest gain · Largest loss · Creation ·
+  Activate/Deactivate button · Run/Stop button · Edit icon · Delete icon.
+- **Monaco Editor** — available on both creation and editing. Configured for Python.
+  Pre-filled on line 1 with:
+  `# Available variables: ohlcv, balance, params, statistics, signal, quantity, reason`
+- **Create / Edit form fields:** Name (free text), Broker (combo with market label),
+  Asset (combo populated from broker's assets, auto-filtered from 3rd character).
+- **Pagination, sorting, and filters** — see wireflow.md §Strategies for full details.
+- **Run/Stop lifecycle and row protections** — see §8.3 Execution Lifecycle.
+
+---
+
+### Planned Future Screens
+
+> The following screens are **not yet defined in wireflow.md** and are planned
+> for future implementation phases.
+
+#### D. Paper Trading *(planned future feature)*
 
 **Purpose:** Test strategies against live prices with no financial risk.
 
-**Features:**
+**Planned features:**
 - Prominent banner: "Paper Trading — Simulated funds only. No real orders are placed."
 - Virtual portfolio panel: configurable starting balance, current simulated holdings, unrealised P&L.
 - Active paper strategies table: same columns as Live Strategies Dashboard (Status, Last Signal, P&L).
@@ -1078,31 +1245,20 @@ CREATE TABLE notifications (
 - Side-by-side comparison: Paper P&L vs. Backtest P&L for the same strategy and period.
 - Promote to Live button: moves a strategy from Paper to Live mode after a confirmation dialog.
 
-### D. Live Strategies Dashboard
-
-**Purpose:** Monitor and control active live trading bots.
-
-**Features:**
-- Data table of all active strategies: Status, Mode, Last Signal, current P&L.
-- Circuit breaker state badge per strategy (Closed / Open / Half-Open).
-- Controls: Pause, Resume, Terminate (with confirmation).
-- Real-time P&L updates via authenticated SignalR WebSocket.
-- Error log panel: last N errors for each strategy, with timestamps and reasons.
-
-### E. Order History
+#### E. Order History *(planned future feature)*
 
 **Purpose:** Full audit trail of all trading activity.
 
-**Features:**
+**Planned features:**
 - Unified order table filterable by Mode (live / paper / backtest), Status, Symbol, Date range.
 - Columns: Timestamp, Strategy, Symbol, Side, Quantity, Fill Price, Fees, Status, Broker Confirmation ID.
 - CSV export.
 
-### F. Settings
+#### F. Settings *(planned future feature)*
 
 **Purpose:** Account and session management.
 
-**Features:**
+**Planned features:**
 - Password change (triggers Argon2id re-hash and full session revocation).
 - Active sessions list with device/IP info and individual force-logout buttons.
 - Notification preferences: email alerts for circuit breaker trips, order fills, and authentication events.
@@ -1228,33 +1384,34 @@ ALLOWED_ORIGINS                         Comma-separated list of allowed frontend
 
 | Method | Path | Request Body | Response | Notes |
 |---|---|---|---|---|
-| GET | `/api/brokers` | — | `200 [ { id, broker_name, status, fee_rate, is_sandbox } ]` | List user's brokers |
-| POST | `/api/brokers` | `{ broker_name, api_key, secret, fee_rate, funding_rate, is_sandbox }` | `201 { id }` | Secret encrypted before DB |
+| GET | `/api/brokers` | — | `200 [ { id, broker_name, maker_fee, market, network, status } ]` | List user's brokers |
+| POST | `/api/brokers` | `{ broker_name, api_key, secret, maker_fee, market, network }` | `201 { id }` | Secret encrypted before DB; auto-tests connection |
+| PUT | `/api/brokers/{id}` | (partial update) | `200` | Edit broker fields |
 | GET | `/api/brokers/{id}/test` | — | `200 { connected: true }` | Tests connection to exchange |
-| DELETE | `/api/brokers/{id}` | — | `204` | Cascades to strategies |
-| GET | `/api/brokers/{id}/markets` | — | `200 [ { symbol, base, quote } ]` | Cached 300s |
-| GET | `/api/brokers/{id}/ticker/{symbol}` | — | `200 { last, bid, ask, volume }` | Cached 5s |
+| DELETE | `/api/brokers/{id}` | — | `204` | Confirmation modal in frontend; cascades to strategies |
+| GET | `/api/brokers/{id}/assets` | — | `200 [ { symbol, base, quote } ]` | Cached; used to populate strategy Asset combo |
 
 ### 18.3 Strategies
 
 | Method | Path | Request Body | Response | Notes |
 |---|---|---|---|---|
-| GET | `/api/strategies` | — | `200 [ { id, name, status, mode, symbol, pnl } ]` | |
-| POST | `/api/strategies` | `{ name, credential_id, symbol, timeframe, script, parameters, mode, max_position_size, max_daily_volume }` | `201 { id }` | |
-| PUT | `/api/strategies/{id}` | (partial update) | `200` | Script edit creates new version |
-| POST | `/api/strategies/{id}/start` | — | `200` | Starts live/paper execution |
-| POST | `/api/strategies/{id}/pause` | — | `200` | Pauses execution |
-| POST | `/api/strategies/{id}/backtest` | `{ start_date, end_date }` | `202 { task_id }` | Async Hangfire task |
-| GET | `/api/strategies/{id}/executions` | `?mode=&limit=` | `200 [ ... ]` | |
+| GET | `/api/strategies` | `?exchange=&isActive=&status=&page=&pageSize=&sortBy=&sortDir=` | `200 { items: [...], total }` | Paginated, filterable, sortable |
+| POST | `/api/strategies` | `{ name, credential_id, symbol, script }` | `201 { id }` | Created as is_active=true, status=not_executed |
+| PUT | `/api/strategies/{id}` | (partial update) | `200` | Script edit creates new version; blocked while Waiting/Running |
+| POST | `/api/strategies/{id}/run` | `{ pastExecution, timeUnit, amount }` | `200` | Sets status → Waiting; see §8.3 |
+| POST | `/api/strategies/{id}/stop` | — | `200` | Confirmation required; sets status → Cancelled  |
+| PUT | `/api/strategies/{id}/activate` | — | `200` | Sets is_active=true |
+| PUT | `/api/strategies/{id}/deactivate` | — | `200` | Sets is_active=false; disabled while Waiting/Running |
+| DELETE | `/api/strategies/{id}` | — | `204` | Blocked while Waiting/Running |
 
-### 18.4 Orders
+### 18.4 Orders *(planned future feature)*
 
 | Method | Path | Request Body | Response | Notes |
 |---|---|---|---|---|
 | GET | `/api/orders` | `?mode=&status=&symbol=&from=&to=&limit=` | `200 [ ... ]` | Filterable |
 | GET | `/api/orders/export` | `?format=csv` | `200 text/csv` | CSV download |
 
-### 18.5 Notifications & Settings
+### 18.5 Notifications & Settings *(planned future feature)*
 
 | Method | Path | Request Body | Response | Notes |
 |---|---|---|---|---|
@@ -1294,13 +1451,23 @@ wss://api.example.com/hubs/trading?access_token={access_token}
 
 ### 19.2 Hub Events (Server-to-Client)
 
-Instead of manually parsing discriminated JSON unions, the frontend subscribes to strongly-typed events:
+Instead of manually parsing discriminated JSON unions, the frontend subscribes to strongly-typed events.
 
-- `OnStrategyUpdate(strategyId, status, lastSignal, pnl)`
+**Strategy execution lifecycle events (per wireflow.md):**
+
+| Event | Payload | Triggered when |
+|---|---|---|
+| `OnExecutionStarted` | `(strategyId, status="running")` | Background job picks up a Waiting strategy |
+| `OnExecutionCompleted` | `(strategyId, status="completed", pnl, pnlPct, largestGain, largestLoss)` | Backtest finishes naturally |
+| `OnExecutionCancelled` | `(strategyId, status="cancelled")` | User clicks Stop |
+| `OnExecutionError` | `(strategyId, status="error", errorMessage)` | Strategy fails — no retry |
+
+**Other events *(planned future features)*:**
 - `OnOrderFill(orderId, symbol, side, fillPrice)`
 - `OnNotification(notificationId, title, type)`
-- `OnBacktestProgress(taskId, percent, currentDate)`
-- `OnBacktestComplete(taskId, pnl, trades, sharpe)`
+
+> **Dashboard note:** Per wireflow.md, dashboard values (Portfolio, P&L) are
+> refreshed via **60-second HTTP polling**, not via WebSocket.
 
 ### 19.3 Reconnection & Resiliency
 

@@ -1,5 +1,18 @@
 # Automated Cryptocurrency Trading Application - Architecture & Ideas
 
+> [!IMPORTANT]
+> **This document is superseded.** It was an early brainstorm and is preserved
+> for historical context only. The authoritative behavioral spec is
+> [wireflow.md](wireflow.md) and the technical architecture is
+> [architecture.md](architecture.md).
+>
+> **Actual technology stack:** .NET 9 (ASP.NET Core) backend, React + Vite
+> frontend, ExchangeSharp broker adapter (not CCXT), Python-sandboxed strategy
+> runner, PostgreSQL, Redis, Hangfire.
+>
+> **Supported exchanges:** Binance, Bitfinex, Bybit, Coinbase Advanced, Kraken,
+> KuCoin, OKX.
+
 This document organizes your requirements into a structured architectural plan, highlighting potential technology stacks and crucial security considerations.
 
 ## 1. High-Level Overview

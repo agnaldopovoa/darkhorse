@@ -41,6 +41,7 @@ venv.bak/
 !.env.example
 *.db
 backend_v01/
+CHANGELOG.md
 
 # OS Specific
 .DS_Store

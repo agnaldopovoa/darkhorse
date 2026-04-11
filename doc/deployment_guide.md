@@ -2,13 +2,14 @@
 
 ## System Context (MANDATORY)
 
-* **Backend:** ASP.NET Core Web API (.NET 8/9)
+* **Backend:** ASP.NET Core Web API (.NET 9)
 * **Worker:** .NET Background Service (Runs inside API process via `IHostedService` for Hangfire)
 * **Frontend:** React + Vite + TypeScript
 * **Strategy Runner:** Python 3 (Invoked by background worker)
 * **Database:** PostgreSQL (Supabase in production)
-* **Real-time:** SignalR (TradingHub)
+* **Real-time:** SignalR (TradingHub) — used for strategy execution lifecycle events only; dashboard uses 60-second HTTP polling
 * **Cache:** Redis (Upstash in production, Local Docker in QA/Local)
+* **Supported Exchanges:** Binance, Bitfinex, Bybit, Coinbase Advanced, Kraken, KuCoin, OKX
 
 ---
 
@@ -29,7 +30,7 @@ wget https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.
 sudo dpkg -i packages-microsoft-prod.deb
 rm packages-microsoft-prod.deb
 sudo apt-get update
-sudo apt-get install -y dotnet-sdk-8.0
+sudo apt-get install -y dotnet-sdk-9.0
 
 # 2. Install Node.js (v20 LTS) & npm
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
@@ -298,7 +299,7 @@ We will implement "API + Worker in same container (HostedService)". Since Fly.io
 **1. Create the `backend/Dockerfile`:**
 ```dockerfile
 # backend/Dockerfile
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
 # Copy solution and restore
@@ -316,7 +317,7 @@ WORKDIR "/src/Api"
 RUN dotnet publish -c Release -o /app/publish
 
 # Final runtime image
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
+FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
 WORKDIR /app
 EXPOSE 8080
 
